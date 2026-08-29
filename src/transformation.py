@@ -103,7 +103,6 @@ def run_transformation(
     Args:
         input_path: Ruta del archivo crudo.
         output_path: Ruta del archivo procesado.
-        verbose: Si True imprime metricas como en 02_transformation.ipynb.
 
     Returns:
         DataFrame transformado.
@@ -136,7 +135,6 @@ def run_transformation(
         print(info['nulls'].to_string())
         print(f"duplicados: {info['duplicates']}")
 
-    # Asegurar que la carpeta de salida existe
     _pl.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     save_processed(df, output_path)
 
