@@ -6,15 +6,6 @@ Ejecuta:
   1. src/exploration.py   -> EDA y visualizaciones (01_exploration.ipynb)
   2. src/transformation.py -> Limpieza y generación de data/processed (02_transformation.ipynb)
   3. src/regression.py     -> Modelo de regresión lineal (03_regression.ipynb)
-
-Uso:
-  python main.py                # ejecuta los 3 en orden
-  python main.py --step exploration  # ejecuta solo uno
-  python main.py --skip-eda          # salta exploración (útil en servidor sin display)
-
-Nota: Los archivos en src/ contienen magics de Jupyter (%pip) que son inválidos
-fuera de Jupyter. El orquestador los filtra automáticamente a comentarios en tiempo
-de ejecución, sin modificar los archivos originales.
 """
 
 import argparse
@@ -23,7 +14,6 @@ import subprocess
 import sys
 import tempfile
 
-# Rutas absolutas para que funcione desde cualquier directorio
 ROOT = pathlib.Path(__file__).parent.resolve()
 SRC = ROOT / "src"
 
@@ -49,26 +39,17 @@ def _clean_magic_lines(code: str) -> str:
 
 
 def _patch_regression_bug(code: str, name: str) -> str:
-    """Parchea bug del notebook original: theta no definido en 03_regression.ipynb.
-
-    El notebook imprime theta (ecuación normal) pero nunca lo calcula.
-    Sin este parche, el pipeline falla con NameError al ejecutar
-    python main.py. El parche NO modifica src/regression.py original,
-    solo la copia temporal que ejecuta el orquestador.
-    """
     if name != "regression":
         return code
-    # Si el archivo contiene el bug (print(theta) sin definir theta)
     if 'print(theta)' in code and 'Theta con Ecuación Normal' in code:
         patch = (
             "\n# [PATCH main.py] Fix bug notebook original: theta no definido\n"
             "try:\n"
             "    theta  # intenta usar theta si existe\n"
             "except NameError:\n"
-            "    print(\"[WARN] theta no definido -> usando theta_gd como fallback (notebook original incompleto)\")\n"
+            "    print(\"[WARN] theta no definido  usando theta_gd como fallback\")\n"
             "    theta = theta_gd\n"
         )
-        # Inyectar justo antes de print("\nTheta con Ecuación Normal ")
         code = code.replace(
             'print("\\nTheta con Ecuación Normal ")',
             patch + 'print("\\nTheta con Ecuación Normal ")',
@@ -92,9 +73,7 @@ def run_script(name: str, verbose: bool = True) -> None:
     cleaned_code = _clean_magic_lines(raw_code)
     cleaned_code = _patch_regression_bug(cleaned_code, name)
 
-    # Crear archivo temporal limpio para ejecutar en subproceso aislado
-    # cwd=SRC para que las rutas relativas "../data/..." de los notebooks funcionen
-    # (los notebooks usan "../data/raw/..." asumiendo que se ejecuta desde notebook/ o src/)
+
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=f"_{name}.py", delete=False, encoding="utf-8", dir=SRC
     ) as tmp:
@@ -102,10 +81,9 @@ def run_script(name: str, verbose: bool = True) -> None:
         tmp_path = pathlib.Path(tmp.name)
 
     try:
-        # Cada script se ejecuta en su propio proceso Python aislado (unbuffered para orden correcto en logs)
         result = subprocess.run(
             [sys.executable, "-u", str(tmp_path)],
-            cwd=SRC,  # crucial para que "../data" resuelva a Energy-Efficiency/data
+            cwd=SRC,  
         )
         if result.returncode != 0:
             print(f"[ERROR] {name} falló con código {result.returncode}", file=sys.stderr, flush=True)
@@ -134,7 +112,6 @@ def main():
     print(f"SRC:  {SRC}", flush=True)
     sys.stdout.flush()
 
-    # Validar que data existe
     if not (ROOT / "data" / "raw" / "energy_efficiency.xlsx").exists():
         print("[WARN] No se encontró data/raw/energy_efficiency.xlsx", file=sys.stderr, flush=True)
 
