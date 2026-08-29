@@ -148,8 +148,7 @@ def run_exploration(path=RAW_DATA_PATH, verbose=True, save_figs=True):
 
     Args:
         path: Ruta al archivo de datos.
-        verbose: Si True imprime metricas en consola (como en 01_exploration.ipynb).
-        save_figs: Si True guarda las figuras en disco ademas de mostrarlas.
+        save_figs: Si True guarda las figuras en disco.
 
     Returns:
         DataFrame explorado.
@@ -194,8 +193,6 @@ def run_exploration(path=RAW_DATA_PATH, verbose=True, save_figs=True):
     _orig_show = None
     fig_dir = None
     if save_figs:
-        # Directorio robusto: <repo>/outputs/figures y <repo>/data/processed/figures como fallback
-        # Usar ubicacion del archivo, no del cwd
         repo_root = _pl.Path(__file__).resolve().parent.parent
         fig_dir = repo_root / "outputs" / "figures"
         fig_dir.mkdir(parents=True, exist_ok=True)
@@ -210,7 +207,6 @@ def run_exploration(path=RAW_DATA_PATH, verbose=True, save_figs=True):
                     print(f"[FIG] Guardada: {fname}")
             except Exception as e:
                 print(f"[WARN] No se pudo guardar figura: {e}")
-            # En Agg no intentamos mostrar ventana; solo cerramos para liberar memoria
             try:
                 plt.close("all")
             except Exception:
