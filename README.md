@@ -1,4 +1,4 @@
-# Energy Efficiency Pipeline
+# Energy Efficiency
 
 Pipeline modular en Python para analizar y predecir la eficiencia energética de edificios. Implementa EDA, transformación de datos y regresión lineal con descenso de gradiente desde cero.
 
