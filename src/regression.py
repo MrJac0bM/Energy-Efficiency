@@ -38,47 +38,55 @@ def load_processed_data(path=PROCESSED_DATA_PATH):
     return pd.read_csv(path)
 
 
-def train_test_split(X, y, test_size=0.2, random_state=42):
-    """Divide los datos en entrenamiento y prueba de forma aleatoria.
+def train_validation_test_split(X, y, random_state=42):
+    """Divide los datos aleatoriamente en train/validación/prueba (80/10/10).
 
     Args:
         X: Matriz de caracteristicas.
         y: Vector objetivo.
-        test_size: Proporcion del conjunto de prueba.
         random_state: Semilla para reproducibilidad.
 
     Returns:
-        Tupla con (X_train, X_test, y_train, y_test).
+        Tupla con (X_train, X_validation, X_test, y_train, y_validation,
+        y_test). Esta implementación usa exclusivamente NumPy y pandas.
     """
     np.random.seed(random_state)
     shuffled_indices = np.random.permutation(len(X))
-    test_set_size = int(len(X) * test_size)
-    test_indices = shuffled_indices[:test_set_size]
-    train_indices = shuffled_indices[test_set_size:]
+    n_train = int(len(X) * 0.80)
+    n_validation = (len(X) - n_train) // 2
+    train_indices = shuffled_indices[:n_train]
+    validation_indices = shuffled_indices[n_train:n_train + n_validation]
+    test_indices = shuffled_indices[n_train + n_validation:]
     X_train = X.iloc[train_indices]
     y_train = y.iloc[train_indices]
+    X_validation = X.iloc[validation_indices]
+    y_validation = y.iloc[validation_indices]
     X_test = X.iloc[test_indices]
     y_test = y.iloc[test_indices]
-    return X_train, X_test, y_train, y_test
+    return X_train, X_validation, X_test, y_train, y_validation, y_test
 
 
-def one_hot_encode_manual(X_train, X_test, categorical_columns):
+def one_hot_encode_manual(X_train, X_validation, X_test, categorical_columns):
 
     X_train = X_train.copy()
+    X_validation = X_validation.copy()
     X_test = X_test.copy()
     for column in categorical_columns:
         categories = sorted(X_train[column].unique())[1:]
         for category in categories:
             new_column = f'{column}_{category}'
             X_train[new_column] = (X_train[column] == category).astype(int)
+            X_validation[new_column] = (X_validation[column] == category).astype(int)
             X_test[new_column] = (X_test[column] == category).astype(int)
         X_train.drop(columns=[column], inplace=True)
+        X_validation.drop(columns=[column], inplace=True)
         X_test.drop(columns=[column], inplace=True)
-    return X_train, X_test
+    return X_train, X_validation, X_test
 
 
-def scale_manual(X_train, X_test, columns_to_scale):
+def scale_manual(X_train, X_validation, X_test, columns_to_scale):
     X_train = X_train.copy()
+    X_validation = X_validation.copy()
     X_test = X_test.copy()
     scaling_params = {}
     for column in columns_to_scale:
@@ -86,8 +94,9 @@ def scale_manual(X_train, X_test, columns_to_scale):
         std = X_train[column].std()
         scaling_params[column] = {'mean': mean, 'std': std}
         X_train[column] = (X_train[column] - mean) / std
+        X_validation[column] = (X_validation[column] - mean) / std
         X_test[column] = (X_test[column] - mean) / std
-    return X_train, X_test, scaling_params
+    return X_train, X_validation, X_test, scaling_params
 
 
 def add_intercept(X):
@@ -331,15 +340,21 @@ def run_regression(path=PROCESSED_DATA_PATH, verbose=True, save_figs=True):
     if verbose:
         print(f"\n[INFO] X.shape={X.shape} y.shape={y.shape}")
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y)
+    (
+        X_train, X_validation, X_test,
+        y_train, y_validation, y_test,
+    ) = train_validation_test_split(X, y)
     if verbose:
-        print(f"[INFO] Train: {len(X_train)} | Test: {len(X_test)}")
+        print(
+            f"[INFO] Train: {len(X_train)} | "
+            f"Validation: {len(X_validation)} | Test: {len(X_test)}"
+        )
 
-    X_train_encoded, X_test_encoded = one_hot_encode_manual(
-        X_train, X_test, CATEGORICAL_COLUMNS,
+    X_train_encoded, X_validation_encoded, X_test_encoded = one_hot_encode_manual(
+        X_train, X_validation, X_test, CATEGORICAL_COLUMNS,
     )
-    X_train_scaled, X_test_scaled, scaling_params = scale_manual(
-        X_train_encoded, X_test_encoded, NUMERIC_COLUMNS,
+    X_train_scaled, X_validation_scaled, X_test_scaled, scaling_params = scale_manual(
+        X_train_encoded, X_validation_encoded, X_test_encoded, NUMERIC_COLUMNS,
     )
     if verbose:
         print("\n--- verificacion escalado (media~0, std~1 en train) ---")
@@ -383,13 +398,16 @@ def run_regression(path=PROCESSED_DATA_PATH, verbose=True, save_figs=True):
     try:
         plot_cost_history(cost_history)
         y_pred_train = predict_linear(X_train_scaled, theta_gd)
+        y_pred_validation = predict_linear(X_validation_scaled, theta_gd)
         y_pred_test = predict_linear(X_test_scaled, theta_gd)
         results_train = evaluate_regression(y_train, y_pred_train)
+        results_validation = evaluate_regression(y_validation, y_pred_validation)
         results_test = evaluate_regression(y_test, y_pred_test)
 
         if verbose:
             print("\n=== Gradient Descent ===")
             print(f"Train: {results_train}")
+            print(f"Validation: {results_validation}")
             print(f"Test:  {results_test}")
 
             # Tablas Real vs Predicho (primeras y ultimas 10)
@@ -461,6 +479,7 @@ def run_regression(path=PROCESSED_DATA_PATH, verbose=True, save_figs=True):
         'X_train_scaled': X_train_scaled,
         'cost_history': cost_history,
         'metrics_train': results_train,
+        'metrics_validation': results_validation,
         'metrics_test': results_test,
     }
 
