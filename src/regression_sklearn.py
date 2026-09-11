@@ -22,7 +22,6 @@ from sklearn.metrics import (
     mean_squared_error,
     r2_score,
 )
-from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
@@ -67,6 +66,24 @@ NUMERIC_COLUMNS = [
 def load_processed_data(path=PROCESSED_DATA_PATH):
     """Carga el dataset procesado por transformation.py."""
     return pd.read_csv(path)
+
+
+def split_train_validation_test(X, y, random_state=42):
+    """Divide los datos en entrenamiento, validación y prueba (80/10/10).
+
+    La semilla fija permite reproducir la misma partición en cada ejecución.
+    """
+    rng = np.random.RandomState(random_state)
+    indices = rng.permutation(len(X))
+    n_train = int(len(X) * 0.80)
+    n_validation = (len(X) - n_train) // 2
+    train_idx = indices[:n_train]
+    validation_idx = indices[n_train:n_train + n_validation]
+    test_idx = indices[n_train + n_validation:]
+    return (
+        X.iloc[train_idx], X.iloc[validation_idx], X.iloc[test_idx],
+        y.iloc[train_idx], y.iloc[validation_idx], y.iloc[test_idx],
+    )
 
 
 def evaluate_regression(y_true, y_pred):
@@ -263,6 +280,7 @@ def plot_histograma_residuos(
 
 def plot_comparacion_metricas(
     results_train,
+    results_validation,
     results_test,
     fig_dir,
     verbose=True,
@@ -277,6 +295,12 @@ def plot_comparacion_metricas(
         results_train["R2"],
     ]
 
+    validation_values = [
+        results_validation["MAE"],
+        results_validation["RMSE"],
+        results_validation["R2"],
+    ]
+
     test_values = [
         results_test["MAE"],
         results_test["RMSE"],
@@ -284,12 +308,12 @@ def plot_comparacion_metricas(
     ]
 
     x = np.arange(len(metricas))
-    width = 0.35
+    width = 0.25
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
     barras_train = ax.bar(
-        x - width / 2,
+        x - width,
         train_values,
         width,
         label="Train",
@@ -297,8 +321,17 @@ def plot_comparacion_metricas(
         alpha=0.7,
     )
 
+    barras_validation = ax.bar(
+        x,
+        validation_values,
+        width,
+        label="Validation",
+        color="orange",
+        alpha=0.7,
+    )
+
     barras_test = ax.bar(
-        x + width / 2,
+        x + width,
         test_values,
         width,
         label="Test",
@@ -314,6 +347,7 @@ def plot_comparacion_metricas(
     ax.grid(True, axis="y", alpha=0.3)
 
     ax.bar_label(barras_train, padding=3, fmt="%.3f")
+    ax.bar_label(barras_validation, padding=3, fmt="%.3f")
     ax.bar_label(barras_test, padding=3, fmt="%.3f")
 
     plt.tight_layout()
@@ -352,15 +386,16 @@ def run_regression_sklearn(
     if verbose:
         print(f"\n[INFO] X.shape={X.shape} y.shape={y.shape}")
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.2,
-        random_state=42,
-    )
+    (
+        X_train, X_validation, X_test,
+        y_train, y_validation, y_test,
+    ) = split_train_validation_test(X, y)
 
     if verbose:
-        print(f"[INFO] Train: {len(X_train)} | Test: {len(X_test)}")
+        print(
+            f"[INFO] Train: {len(X_train)} | "
+            f"Validation: {len(X_validation)} | Test: {len(X_test)}"
+        )
 
     preprocessor = ColumnTransformer(
         transformers=[
@@ -399,14 +434,17 @@ def run_regression_sklearn(
     model.fit(X_train, y_train)
 
     y_pred_train = model.predict(X_train)
+    y_pred_validation = model.predict(X_validation)
     y_pred_test = model.predict(X_test)
 
     results_train = evaluate_regression(y_train, y_pred_train)
+    results_validation = evaluate_regression(y_validation, y_pred_validation)
     results_test = evaluate_regression(y_test, y_pred_test)
 
     if verbose:
         print("\n=== Random Forest (sklearn) ===")
         print(f"Train: {results_train}")
+        print(f"Validation: {results_validation}")
         print(f"Test:  {results_test}")
 
         y_train_arr = (
@@ -514,6 +552,7 @@ def run_regression_sklearn(
 
         plot_comparacion_metricas(
             results_train,
+            results_validation,
             results_test,
             FIG_DIR,
             verbose=verbose,
@@ -525,8 +564,10 @@ def run_regression_sklearn(
     return {
         "model": model,
         "metrics_train": results_train,
+        "metrics_validation": results_validation,
         "metrics_test": results_test,
         "y_pred_train": y_pred_train,
+        "y_pred_validation": y_pred_validation,
         "y_pred_test": y_pred_test,
     }
 
